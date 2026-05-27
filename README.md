@@ -1,1 +1,1 @@
-# lista-de-precios
+# escaner de precios
