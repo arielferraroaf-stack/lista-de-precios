@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Consulta de Precios</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f1f5f9;color:#1e293b;min-height:100vh}
+header{background:#1e293b;color:#fff;padding:16px;text-align:center}
+header h1{font-size:18px;font-weight:600}
+header p{font-size:12px;color:#94a3b8;margin-top:2px}
+.container{padding:14px;max-width:480px;margin:0 auto}
+
+/* SCANNER */
+.scan-box{background:#fff;border-radius:14px;overflow:hidden;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.scan-header{padding:14px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between}
+.scan-header span{font-size:14px;font-weight:500}
+.badge{font-size:11px;padding:3px 10px;border-radius:20px;background:#f1f5f9;color:#64748b}
+.badge.active{background:#dcfce7;color:#16a34a}
+#scanner-wrap{position:relative;width:100%;background:#000;display:none}
+#scanner-wrap video{width:100%;display:block}
+#scanner-wrap canvas{position:absolute;top:0;left:0;width:100%}
+.scan-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.scan-frame{width:70%;aspect-ratio:3/2;border:2px solid #22c55e;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.45)}
+.scan-line{position:absolute;width:calc(70% - 8px);height:2px;background:linear-gradient(90deg,transparent,#22c55e,transparent);animation:scan 2s linear infinite}
+@keyframes scan{0%{top:25%}100%{top:75%}}
+.btn-scan{width:100%;padding:13px;font-size:14px;font-weight:500;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .2s}
+.btn-scan.start{background:#22c55e;color:#fff}
+.btn-scan.stop{background:#ef4444;color:#fff}
+
+/* MANUAL */
+.manual-box{background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.manual-box label{font-size:12px;color:#64748b;display:block;margin-bottom:6px}
+.input-row{display:flex;gap:8px}
+.input-row input{flex:1;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;color:#1e293b}
+.input-row input:focus{outline:none;border-color:#22c55e}
+.btn-buscar{padding:10px 16px;background:#1e293b;color:#fff;border:none;border-radius:10px;font-size:14px;cursor:pointer;white-space:nowrap}
+
+/* RESULTADO */
+.result{background:#fff;border-radius:14px;padding:20px 16px;box-shadow:0 1px 4px rgba(0,0,0,.08);display:none;text-align:center}
+.result.show{display:block}
+.result.error{border:1px solid #fecaca}
+.res-icon{font-size:36px;margin-bottom:8px}
+.res-name{font-size:18px;font-weight:600;margin-bottom:4px}
+.res-cat{font-size:13px;color:#64748b;margin-bottom:16px}
+.res-price{font-size:40px;font-weight:700;color:#16a34a;margin-bottom:8px}
+.res-code{font-size:12px;color:#94a3b8;font-family:monospace}
+.res-error{font-size:15px;color:#ef4444;font-weight:500}
+
+/* LOADING */
+.loading{text-align:center;padding:20px;display:none}
+.loading.show{display:block}
+.spinner{width:32px;height:32px;border:3px solid #e2e8f0;border-top-color:#22c55e;border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* HISTORIAL */
+.hist-box{background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:14px;display:none}
+.hist-box.show{display:block}
+.hist-title{font-size:13px;font-weight:500;color:#64748b;margin-bottom:10px;display:flex;justify-content:space-between}
+.hist-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
+.hist-item:last-child{border-bottom:none}
+.hist-name{color:#1e293b;font-weight:500}
+.hist-price{color:#16a34a;font-weight:600}
+.hist-code{color:#94a3b8;font-size:11px;font-family:monospace}
+.btn-clear{font-size:12px;color:#ef4444;background:none;border:none;cursor:pointer}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📦 Consulta de Precios</h1>
+  <p>Escaneá o ingresá el código de barras</p>
+</header>
+
+<div class="container">
+
+  <!-- SCANNER -->
+  <div class="scan-box">
+    <div class="scan-header">
+      <span>📷 Lector de cámara</span>
+      <span class="badge" id="badge-estado">Inactivo</span>
+    </div>
+    <div id="scanner-wrap">
+      <div id="interactive" class="viewport"></div>
+      <div class="scan-overlay">
+        <div class="scan-frame"></div>
+        <div class="scan-line"></div>
+      </div>
+    </div>
+    <button class="btn-scan start" id="btn-camara" onclick="toggleCamara()">
+      📷 Activar cámara
+    </button>
+  </div>
+
+  <!-- MANUAL -->
+  <div class="manual-box">
+    <label>O ingresá el código manualmente:</label>
+    <div class="input-row">
+      <input type="text" id="input-cod" placeholder="Ej: 7790001000001" inputmode="numeric" onkeydown="if(event.key==='Enter')buscarPrecio(document.getElementById('input-cod').value)">
+      <button class="btn-buscar" onclick="buscarPrecio(document.getElementById('input-cod').value)">Buscar</button>
+    </div>
+  </div>
+
+  <!-- LOADING -->
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div style="font-size:13px;color:#64748b">Consultando precio...</div>
+  </div>
+
+  <!-- RESULTADO -->
+  <div class="result" id="result"></div>
+
+  <!-- HISTORIAL -->
+  <div class="hist-box" id="hist-box">
+    <div class="hist-title">
+      <span>🕐 Últimas consultas</span>
+      <button class="btn-clear" onclick="limpiarHist()">Limpiar</button>
+    </div>
+    <div id="hist-list"></div>
+  </div>
+
+</div>
+
+<script>
+const SHEET_ID = '1GKc_D6Djt4epXvAgJHPyi3bJ0Uljs5vjcD-aGcLDIUQ';
+const URL_SHEET = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=Productos`;
+
+let productos = null;
+let escaneando = false;
+let historial = JSON.parse(localStorage.getItem('hist_precios') || '[]');
+
+async function cargarProductos() {
+  try {
+    const r = await fetch(URL_SHEET);
+    const txt = await r.text();
+    const json = JSON.parse(txt.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
+    const rows = json.table.rows;
+    productos = {};
+    rows.forEach(row => {
+      if (!row.c[0] || !row.c[0].v) return;
+      const cod = String(row.c[0].v).trim();
+      productos[cod] = {
+        nombre: row.c[1]?.v || '—',
+        categoria: row.c[2]?.v || '—',
+        precio: row.c[3]?.v || 0,
+        img: row.c[4]?.v || ''
+      };
+    });
+  } catch(e) {
+    productos = null;
+  }
+}
+
+async function buscarPrecio(cod) {
+  cod = String(cod).trim();
+  if (!cod) return;
+  document.getElementById('input-cod').value = cod;
+  mostrarLoading(true);
+  document.getElementById('result').className = 'result';
+
+  if (!productos) await cargarProductos();
+  mostrarLoading(false);
+
+  const p = productos ? productos[cod] : null;
+  const res = document.getElementById('result');
+
+  if (!p) {
+    res.className = 'result show error';
+    res.innerHTML = `<div class="res-icon">❌</div><div class="res-error">Producto no encontrado</div><div style="font-size:13px;color:#94a3b8;margin-top:6px">Código: ${cod}</div>`;
+    return;
+  }
+
+  const precio = Number(p.precio).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  res.className = 'result show';
+  res.innerHTML = `
+    ${p.img ? `<img src="${p.img}" style="width:80px;height:80px;object-fit:contain;border-radius:10px;margin-bottom:10px" alt="">` : '<div class="res-icon">📦</div>'}
+    <div class="res-name">${p.nombre}</div>
+    <div class="res-cat">${p.categoria}</div>
+    <div class="res-price">$ ${precio}</div>
+    <div class="res-code">Cód: ${cod}</div>
+  `;
+
+  // Guardar en historial
+  historial = historial.filter(h => h.codigo !== cod);
+  historial.unshift({codigo: cod, nombre: p.nombre, precio: precio});
+  if (historial.length > 5) historial = historial.slice(0, 5);
+  localStorage.setItem('hist_precios', JSON.stringify(historial));
+  renderHistorial();
+}
+
+function mostrarLoading(v) {
+  document.getElementById('loading').className = v ? 'loading show' : 'loading';
+}
+
+function renderHistorial() {
+  if (!historial.length) { document.getElementById('hist-box').className = 'hist-box'; return; }
+  document.getElementById('hist-box').className = 'hist-box show';
+  document.getElementById('hist-list').innerHTML = historial.map(h => `
+    <div class="hist-item" onclick="buscarPrecio('${h.codigo}')" style="cursor:pointer">
+      <div><div class="hist-name">${h.nombre}</div><div class="hist-code">${h.codigo}</div></div>
+      <div class="hist-price">$ ${h.precio}</div>
+    </div>`).join('');
+}
+
+function limpiarHist() {
+  historial = [];
+  localStorage.removeItem('hist_precios');
+  renderHistorial();
+}
+
+function toggleCamara() {
+  escaneando ? detenerCamara() : iniciarCamara();
+}
+
+function iniciarCamara() {
+  const wrap = document.getElementById('scanner-wrap');
+  wrap.style.display = 'block';
+  document.getElementById('btn-camara').className = 'btn-scan stop';
+  document.getElementById('btn-camara').textContent = '⏹ Detener cámara';
+  document.getElementById('badge-estado').className = 'badge active';
+  document.getElementById('badge-estado').textContent = 'Activo';
+  escaneando = true;
+
+  Quagga.init({
+    inputStream: {
+      name: 'Live',
+      type: 'LiveStream',
+      target: document.getElementById('interactive'),
+      constraints: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    },
+    decoder: { readers: ['ean_reader','ean_8_reader','code_128_reader','code_39_reader','upc_reader'] },
+    locate: true
+  }, err => {
+    if (err) { alert('No se pudo acceder a la cámara. Usá el ingreso manual.'); detenerCamara(); return; }
+    Quagga.start();
+  });
+
+  let ultimo = '';
+  Quagga.onDetected(data => {
+    const cod = data.codeResult.code;
+    if (cod === ultimo) return;
+    ultimo = cod;
+    setTimeout(() => ultimo = '', 3000);
+    buscarPrecio(cod);
+    detenerCamara();
+  });
+}
+
+function detenerCamara() {
+  Quagga.stop();
+  document.getElementById('scanner-wrap').style.display = 'none';
+  document.getElementById('btn-camara').className = 'btn-scan start';
+  document.getElementById('btn-camara').textContent = '📷 Activar cámara';
+  document.getElementById('badge-estado').className = 'badge';
+  document.getElementById('badge-estado').textContent = 'Inactivo';
+  escaneando = false;
+}
+
+// Init
+cargarProductos();
+renderHistorial();
+</script>
+</body>
+</html>
