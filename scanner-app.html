@@ -207,7 +207,7 @@ function buscarPorDescripcion(query) {
 
     container.innerHTML = matches.map(([cod, p]) => {
       const precio = Number(p.precio).toLocaleString('es-AR', {minimumFractionDigits: 0, maximumFractionDigits: 0});
-      return `<div class="search-item" onclick="seleccionarProducto('${cod}')">
+      return `<div class="search-item" data-cod="${cod.replace(/"/g, '&quot;')}" onclick="seleccionarProducto(this.dataset.cod)">
         <div>
           <div class="search-item-name">${p.nombre}</div>
           <div class="search-item-meta">Cód: ${cod}${p.categoria && p.categoria !== '—' ? ' · ' + p.categoria : ''}</div>
