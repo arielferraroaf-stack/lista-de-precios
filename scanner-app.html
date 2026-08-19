@@ -38,6 +38,23 @@ header p{font-size:12px;color:#94a3b8;margin-top:2px}
 .input-row input:focus{outline:none;border-color:#22c55e}
 .btn-buscar{padding:10px 16px;background:#1e293b;color:#fff;border:none;border-radius:10px;font-size:14px;cursor:pointer;white-space:nowrap}
 
+/* BÚSQUEDA POR DESCRIPCIÓN */
+.search-box{background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.search-box label{font-size:12px;color:#64748b;display:block;margin-bottom:6px}
+.search-input-wrap{position:relative}
+.search-input-wrap input{width:100%;font-size:15px;padding:10px 12px 10px 36px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;color:#1e293b}
+.search-input-wrap input:focus{outline:none;border-color:#22c55e}
+.search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:16px;color:#94a3b8;pointer-events:none}
+.search-results{margin-top:10px;display:none;max-height:260px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff}
+.search-results.show{display:block}
+.search-item{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;transition:background .15s}
+.search-item:last-child{border-bottom:none}
+.search-item:hover{background:#f8fafc}
+.search-item-name{font-size:13px;font-weight:500;color:#1e293b}
+.search-item-meta{font-size:11px;color:#94a3b8;margin-top:2px;font-family:monospace}
+.search-item-price{font-size:14px;font-weight:600;color:#16a34a;white-space:nowrap;margin-left:10px}
+.search-empty{padding:16px;text-align:center;font-size:13px;color:#94a3b8}
+
 /* RESULTADO */
 .result{background:#fff;border-radius:14px;padding:20px 16px;box-shadow:0 1px 4px rgba(0,0,0,.08);display:none;text-align:center}
 .result.show{display:block}
@@ -71,7 +88,7 @@ header p{font-size:12px;color:#94a3b8;margin-top:2px}
 
 <header>
   <h1>📦 Consulta de Precios</h1>
-  <p>Escaneá o ingresá el código de barras</p>
+  <p>Escaneá, buscá por código o descripción</p>
 </header>
 
 <div class="container">
@@ -94,13 +111,23 @@ header p{font-size:12px;color:#94a3b8;margin-top:2px}
     </button>
   </div>
 
-  <!-- MANUAL -->
+  <!-- CÓDIGO MANUAL -->
   <div class="manual-box">
-    <label>O ingresá el código manualmente:</label>
+    <label>Buscar por código:</label>
     <div class="input-row">
-      <input type="text" id="input-cod" placeholder="Ej: 7790001000001" inputmode="numeric" onkeydown="if(event.key==='Enter')buscarPrecio(document.getElementById('input-cod').value)">
+      <input type="text" id="input-cod" placeholder="Ej: 1602" inputmode="numeric" onkeydown="if(event.key==='Enter')buscarPrecio(document.getElementById('input-cod').value)">
       <button class="btn-buscar" onclick="buscarPrecio(document.getElementById('input-cod').value)">Buscar</button>
     </div>
+  </div>
+
+  <!-- BÚSQUEDA POR DESCRIPCIÓN -->
+  <div class="search-box">
+    <label>Buscar por descripción:</label>
+    <div class="search-input-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="input-desc" placeholder="Ej: alacena, colchon, aire..." oninput="buscarPorDescripcion(this.value)" autocomplete="off">
+    </div>
+    <div class="search-results" id="search-results"></div>
   </div>
 
   <!-- LOADING -->
@@ -130,6 +157,7 @@ const URL_SHEET = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tq
 let productos = null;
 let escaneando = false;
 let historial = JSON.parse(localStorage.getItem('hist_precios') || '[]');
+let searchTimeout = null;
 
 async function cargarProductos() {
   try {
@@ -151,6 +179,51 @@ async function cargarProductos() {
   } catch(e) {
     productos = null;
   }
+}
+
+function buscarPorDescripcion(query) {
+  clearTimeout(searchTimeout);
+  const container = document.getElementById('search-results');
+
+  if (!query || query.trim().length < 2) {
+    container.className = 'search-results';
+    return;
+  }
+
+  searchTimeout = setTimeout(async () => {
+    if (!productos) await cargarProductos();
+    if (!productos) { container.className = 'search-results'; return; }
+
+    const q = query.trim().toLowerCase();
+    const matches = Object.entries(productos).filter(([cod, p]) =>
+      p.nombre.toLowerCase().includes(q) || cod.includes(q)
+    ).slice(0, 20);
+
+    if (!matches.length) {
+      container.innerHTML = `<div class="search-empty">Sin resultados para "${query}"</div>`;
+      container.className = 'search-results show';
+      return;
+    }
+
+    container.innerHTML = matches.map(([cod, p]) => {
+      const precio = Number(p.precio).toLocaleString('es-AR', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+      return `<div class="search-item" onclick="seleccionarProducto('${cod}')">
+        <div>
+          <div class="search-item-name">${p.nombre}</div>
+          <div class="search-item-meta">Cód: ${cod}${p.categoria && p.categoria !== '—' ? ' · ' + p.categoria : ''}</div>
+        </div>
+        <div class="search-item-price">$ ${precio}</div>
+      </div>`;
+    }).join('');
+
+    container.className = 'search-results show';
+  }, 250);
+}
+
+function seleccionarProducto(cod) {
+  document.getElementById('search-results').className = 'search-results';
+  document.getElementById('input-desc').value = '';
+  buscarPrecio(cod);
 }
 
 async function buscarPrecio(cod) {
@@ -182,12 +255,13 @@ async function buscarPrecio(cod) {
     <div class="res-code">Cód: ${cod}</div>
   `;
 
-  // Guardar en historial
   historial = historial.filter(h => h.codigo !== cod);
   historial.unshift({codigo: cod, nombre: p.nombre, precio: precio});
   if (historial.length > 5) historial = historial.slice(0, 5);
   localStorage.setItem('hist_precios', JSON.stringify(historial));
   renderHistorial();
+
+  res.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
 function mostrarLoading(v) {
@@ -258,7 +332,6 @@ function detenerCamara() {
   escaneando = false;
 }
 
-// Init
 cargarProductos();
 renderHistorial();
 </script>
